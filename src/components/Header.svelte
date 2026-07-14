@@ -85,6 +85,10 @@
 
 		<div class="actions">
 			{#if connected && viewer}
+				<a class="wiki-link" href="https://wiki.poji.app/" target="_blank" rel="noreferrer noopener">
+					Wiki
+				</a>
+				<span class="action-separator" aria-hidden="true"></span>
 				<div class="profile">
 					<div class="profile-trigger" aria-haspopup="menu" aria-label="Account menu">
 						{#if viewer.avatarUrl}
@@ -112,6 +116,9 @@
 					</div>
 				</div>
 			{:else}
+				<a class="wiki-link" href="https://wiki.poji.app/" target="_blank" rel="noreferrer noopener">
+					Wiki
+				</a>
 				{#if clientId}
 					<button type="button" class="login-btn" onclick={connect}>Login</button>
 				{/if}
@@ -180,6 +187,17 @@
 		font-family: 'Overpass', sans-serif;
 	}
 
+	.wiki-link {
+		text-decoration: none;
+	}
+
+	.action-separator {
+		width: 1px;
+		height: 1.5rem;
+		background: #2a2a32;
+		margin: 0 0.5rem 0 -0.125rem;
+	}
+
 	.settings-trigger {
 		display: flex;
 		align-items: center;
@@ -202,7 +220,8 @@
 		color: #d8d8de;
 	}
 
-	.login-btn {
+	.login-btn,
+	.wiki-link {
 		padding: 0.4rem 0.9rem;
 		border: none;
 		border-radius: 0.375rem;
@@ -212,10 +231,12 @@
 		font-size: 0.875rem;
 		font-weight: 500;
 		cursor: pointer;
+		transform: translateY(1px);
 		transition: color 150ms ease;
 	}
 
-	.login-btn:hover {
+	.login-btn:hover,
+	.wiki-link:hover {
 		color: #c8c8d0;
 	}
 
