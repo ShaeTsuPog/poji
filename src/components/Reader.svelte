@@ -109,10 +109,31 @@
 		context.drawImage(bitmap, 0, 0, width, height);
 	}
 
-	async function renderBitmap(bitmap, canvas, maxWidth, maxHeight) {
+	/** @typedef {{ canvas: HTMLCanvasElement, width: number, height: number, cssWidth: number, cssHeight: number }} ResizedPage */
+
+	/** Completed offscreen resizes, keyed by `${index}:${width}x${height}`. */
+	const resizeCache = new Map();
+	/** In-flight offscreen resizes, with the same keys as resizeCache. */
+	const resizePromises = new Map();
+
+	function resizeCacheKey(index, width, height) {
+		return `${index}:${width}x${height}`;
+	}
+
+	function logResize(index, method, bitmap, width, height, startedAt) {
+		console.info('[poji:resize]', {
+			page: index + 1,
+			method,
+			source: `${bitmap.width}x${bitmap.height}`,
+			target: `${width}x${height}`,
+			durationMs: Math.round(performance.now() - startedAt)
+		});
+	}
+
+	async function resizeBitmap(index, bitmap, maxWidth, maxHeight) {
+		const startedAt = performance.now();
 		const { width, height, cssWidth, cssHeight } = getTargetDimensions(bitmap, maxWidth, maxHeight);
-		canvas.style.width = `${cssWidth}px`;
-		canvas.style.height = `${cssHeight}px`;
+		const canvas = document.createElement('canvas');
 		canvas.width = width;
 		canvas.height = height;
 
@@ -120,12 +141,11 @@
 			try {
 				const resizer = await getMitchellResizer();
 				if (resizer) {
-					// Keep the visible canvas 2D so it can still be used if WebGPU fails
-					// after acquiring its canvas context.
 					const gpuCanvas = document.createElement('canvas');
 					await resizer.render(bitmap, gpuCanvas, width, height);
 					drawBitmapToCanvas(gpuCanvas, canvas, width, height);
-					return;
+					logResize(index, 'WebGPU Mitchell', bitmap, width, height, startedAt);
+					return { canvas, width, height, cssWidth, cssHeight };
 				}
 				webgpuAvailable = false;
 			} catch (err) {
@@ -141,7 +161,8 @@
 			if (picaAvailable) {
 				try {
 					await pica.resize(bitmap, canvas, { filter: 'lanczos3' });
-					return;
+					logResize(index, 'pica Lanczos3', bitmap, width, height, startedAt);
+					return { canvas, width, height, cssWidth, cssHeight };
 				} catch (err) {
 					picaAvailable = false;
 					if (!picaFallbackWarned) {
@@ -153,15 +174,62 @@
 		}
 
 		drawBitmapToCanvas(bitmap, canvas, width, height);
+		logResize(
+			index,
+			width === bitmap.width && height === bitmap.height
+				? 'browser canvas (copy only)'
+				: 'browser canvas scaling',
+			bitmap,
+			width,
+			height,
+			startedAt
+		);
+		return { canvas, width, height, cssWidth, cssHeight };
 	}
 
-	function prefetchNeighbors(index) {
+	async function getResizedPage(index, maxWidth, maxHeight) {
+		const bitmap = await getBitmap(index);
+		const { width, height } = getTargetDimensions(bitmap, maxWidth, maxHeight);
+		const key = resizeCacheKey(index, width, height);
+
+		const cached = resizeCache.get(key);
+		if (cached) return cached;
+
+		let promise = resizePromises.get(key);
+		if (!promise) {
+			promise = resizeBitmap(index, bitmap, maxWidth, maxHeight).then((resized) => {
+				resizeCache.set(key, resized);
+				resizePromises.delete(key);
+				return resized;
+			});
+			resizePromises.set(key, promise);
+		}
+		return promise;
+	}
+
+	function blitToCanvas(canvas, resized) {
+		if (canvas.width !== resized.width) canvas.width = resized.width;
+		if (canvas.height !== resized.height) canvas.height = resized.height;
+		canvas.style.width = `${resized.cssWidth}px`;
+		canvas.style.height = `${resized.cssHeight}px`;
+		get2dContext(canvas).drawImage(resized.canvas, 0, 0);
+	}
+
+	function pruneResizeCache(currentIndex) {
+		for (const key of resizeCache.keys()) {
+			const cachedPageIndex = Number(key.split(':')[0]);
+			if (Math.abs(cachedPageIndex - currentIndex) > 2) resizeCache.delete(key);
+		}
+	}
+
+	function prefetchNeighbors(index, maxWidth, maxHeight) {
 		for (const neighbor of [index - 1, index + 1]) {
 			if (neighbor < 0 || neighbor >= book.pages.length) continue;
-			getBitmap(neighbor).catch((err) =>
+			getResizedPage(neighbor, maxWidth, maxHeight).catch((err) =>
 				console.error('Failed to prefetch page', neighbor, err)
 			);
 		}
+		pruneResizeCache(index);
 	}
 
 	let renderToken = 0;
@@ -182,11 +250,10 @@
 		renderQueue = renderQueue
 			.then(async () => {
 				if (token !== renderToken) return;
-				const bitmap = await getBitmap(index);
+				const resized = await getResizedPage(index, maxWidth, maxHeight);
 				if (token !== renderToken) return;
-				await renderBitmap(bitmap, canvas, maxWidth, maxHeight);
-				if (token !== renderToken) return;
-				prefetchNeighbors(index);
+				blitToCanvas(canvas, resized);
+				prefetchNeighbors(index, maxWidth, maxHeight);
 			})
 			.catch((err) => console.error('Failed to render page', err));
 	}
@@ -201,6 +268,8 @@
 			promise.then((bitmap) => bitmap.close()).catch(() => {});
 		}
 		bitmaps.clear();
+		resizeCache.clear();
+		resizePromises.clear();
 	});
 
 	$effect(() => {
@@ -208,6 +277,8 @@
 			for (const promise of bitmaps.values()) {
 				promise.then((bitmap) => bitmap.close()).catch(() => {});
 			}
+			resizeCache.clear();
+			resizePromises.clear();
 		};
 	});
 
