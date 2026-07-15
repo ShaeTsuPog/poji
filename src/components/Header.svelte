@@ -1,5 +1,7 @@
 <script>
 	import { ChevronDown, LogOut, Settings, User } from 'lucide-svelte';
+	import IconDiscord from '~icons/simple-icons/discord';
+	import IconGithub from '~icons/simple-icons/github';
 	import {
 		clearAccessToken,
 		getAuthorizationUrl,
@@ -101,10 +103,16 @@
 						<ChevronDown size={14} class="profile-chevron" aria-hidden="true" />
 					</div>
 					<div class="menu" role="menu">
-						<div class="menu-row menu-name">
+						<a
+							class="menu-row menu-item menu-name"
+							href={`https://anilist.co/user/${encodeURIComponent(viewer.name)}`}
+							target="_blank"
+							rel="noreferrer noopener"
+							role="menuitem"
+						>
 							<User size={14} aria-hidden="true" />
 							<span>{viewer.name}</span>
-						</div>
+						</a>
 						<button type="button" class="menu-row menu-item" role="menuitem" onclick={openSettings}>
 							<Settings size={14} aria-hidden="true" />
 							<span>Settings</span>
@@ -113,6 +121,30 @@
 							<LogOut size={14} aria-hidden="true" />
 							<span>Log out</span>
 						</button>
+						<div class="menu-socials" role="none">
+							<a
+								class="menu-social-link"
+								href="https://github.com/hotsno/poji"
+								target="_blank"
+								rel="noreferrer noopener"
+								role="menuitem"
+								aria-label="GitHub"
+								title="GitHub"
+							>
+								<IconGithub aria-hidden="true" />
+							</a>
+							<a
+								class="menu-social-link"
+								href="https://discord.gg/2HwxyuSQHm"
+								target="_blank"
+								rel="noreferrer noopener"
+								role="menuitem"
+								aria-label="Discord"
+								title="Discord"
+							>
+								<IconDiscord aria-hidden="true" />
+							</a>
+						</div>
 					</div>
 				</div>
 			{:else}
@@ -358,6 +390,7 @@
 		border: none;
 		border-radius: 0.375rem;
 		background: transparent;
+		text-decoration: none;
 		text-align: left;
 		cursor: pointer;
 		appearance: none;
@@ -370,5 +403,41 @@
 	.menu-item:disabled {
 		cursor: not-allowed;
 		opacity: 0.45;
+	}
+
+	.menu-socials {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
+		margin-top: 0.375rem;
+		padding: 0.375rem 0.25rem 0;
+		border-top: 1px solid #2a2a32;
+	}
+
+	.menu-social-link {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.875rem;
+		height: 1.875rem;
+		border-radius: 0.375rem;
+		color: #777780;
+		transition:
+			background-color 150ms ease,
+			color 150ms ease;
+	}
+
+	.menu-social-link:hover,
+	.menu-social-link:focus-visible {
+		background: rgba(138, 127, 240, 0.12);
+		color: #c8c8d0;
+		outline: none;
+	}
+
+	.menu-social-link :global(svg) {
+		display: block;
+		width: 16px;
+		height: 16px;
 	}
 </style>
