@@ -54,7 +54,13 @@
 	let scalingCapabilitiesReady = $state(false);
 	let hasLibrary = $state(false);
 	let settingsOpen = $state(false);
+	let currentPageIndex = $state(0);
 	let pageProgressQueue = Promise.resolve();
+	const pageTitle = $derived(
+		book
+			? `poji · ${book.mangaName} · ${book.chapterLabel} · Page ${currentPageIndex + 1}`
+			: 'poji · .cbz reader'
+	);
 
 	async function refreshStorageMode() {
 		storageMode = await getStorageMode();
@@ -192,6 +198,9 @@
 		const preceding = findPrecedingChapter(mangaVolumes, volumeId, chapterId);
 		const nextChapter = following ? await resolveChapterMeta(mangaVolumes, following) : null;
 		const prevChapter = preceding ? await resolveChapterMeta(mangaVolumes, preceding) : null;
+		const initialPageIndex = startAtEnd
+			? chapter.pages.length - 1
+			: Math.max(0, Math.min(chapter.pages.length - 1, startPageIndex ?? savedPageIndex));
 		book = {
 			...chapter,
 			chapterLabel: formatChapterLabel(volume, chapterId),
@@ -200,10 +209,9 @@
 			chapterId,
 			nextChapter,
 			prevChapter,
-			startPageIndex: startAtEnd
-				? chapter.pages.length - 1
-				: Math.max(0, Math.min(chapter.pages.length - 1, startPageIndex ?? savedPageIndex))
+			startPageIndex: initialPageIndex
 		};
+		currentPageIndex = initialPageIndex;
 	}
 
 	function handleClose() {
@@ -227,6 +235,8 @@
 
 	function handlePageChange(pageIndex) {
 		if (!book) return;
+		currentPageIndex = pageIndex;
+		if (pageIndex >= book.pages.length - 1) return;
 		const { mangaName, volumeId, chapterId } = book;
 		pageProgressQueue = pageProgressQueue
 			.then(() => {
@@ -245,6 +255,10 @@
 			});
 	}
 </script>
+
+<svelte:head>
+	<title>{pageTitle}</title>
+</svelte:head>
 
 <svelte:window onkeydown={handleWindowKeydown} />
 

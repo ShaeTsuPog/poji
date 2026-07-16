@@ -314,7 +314,7 @@
 		pageIndex = next;
 		chapterTransition = null;
 		closeImageMenu();
-		if (next < book.pages.length - 1) onPageChange?.(next);
+		onPageChange?.(next);
 		maybeCompleteChapter(next);
 	}
 
