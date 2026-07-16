@@ -272,7 +272,7 @@
 		{:else}
 			<div class="empty-actions">
 				<a class="empty-wiki-link" href="https://wiki.poji.app/" target="_blank" rel="noreferrer noopener">
-					Wiki
+					Learn more
 				</a>
 				<button type="button" class="empty-settings-btn" aria-label="Settings" onclick={openSettings}>
 					<Settings size={17} aria-hidden="true" />

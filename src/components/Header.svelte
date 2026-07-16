@@ -1,5 +1,5 @@
 <script>
-	import { ChevronDown, LogOut, Settings, User } from 'lucide-svelte';
+	import { BookOpen, ChevronDown, LogOut, Settings, User } from 'lucide-svelte';
 	import IconDiscord from '~icons/simple-icons/discord';
 	import IconGithub from '~icons/simple-icons/github';
 	import {
@@ -87,10 +87,6 @@
 
 		<div class="actions">
 			{#if connected && viewer}
-				<a class="wiki-link" href="https://wiki.poji.app/" target="_blank" rel="noreferrer noopener">
-					Wiki
-				</a>
-				<span class="action-separator" aria-hidden="true"></span>
 				<div class="profile">
 					<div class="profile-trigger" aria-haspopup="menu" aria-label="Account menu">
 						{#if viewer.avatarUrl}
@@ -117,6 +113,16 @@
 							<Settings size={14} aria-hidden="true" />
 							<span>Settings</span>
 						</button>
+						<a
+							class="menu-row menu-item"
+							href="https://wiki.poji.app/"
+							target="_blank"
+							rel="noreferrer noopener"
+							role="menuitem"
+						>
+							<BookOpen size={14} aria-hidden="true" />
+							<span>Wiki</span>
+						</a>
 						<button type="button" class="menu-row menu-item" role="menuitem" onclick={disconnect}>
 							<LogOut size={14} aria-hidden="true" />
 							<span>Log out</span>
@@ -221,13 +227,6 @@
 
 	.wiki-link {
 		text-decoration: none;
-	}
-
-	.action-separator {
-		width: 1px;
-		height: 1.5rem;
-		background: #2a2a32;
-		margin: 0 0.5rem 0 -0.125rem;
 	}
 
 	.settings-trigger {
