@@ -613,6 +613,7 @@
 				currentChapter={chapterLabel}
 				adjacentChapter={chapterTransition === 'end' ? nextChapter : prevChapter}
 				direction={chapterTransition}
+				{isRtl}
 			/>
 		{:else}
 			<canvas {@attach renderPage}></canvas>

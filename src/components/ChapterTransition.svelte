@@ -1,13 +1,17 @@
 <script>
-	/** @type {{ mangaName: string, currentChapter: string, adjacentChapter: { name: string } | null, direction: 'end' | 'start' }} */
-	let { mangaName, currentChapter, adjacentChapter, direction } = $props();
+	/** @type {{ mangaName: string, currentChapter: string, adjacentChapter: { name: string } | null, direction: 'end' | 'start', isRtl?: boolean }} */
+	let { mangaName, currentChapter, adjacentChapter, direction, isRtl = false } = $props();
 
 	const heading = $derived(direction === 'end' ? 'Chapter complete' : 'Chapter start');
 	const adjacentLabel = $derived(direction === 'end' ? 'Up next' : 'Previous chapter');
 	const hint = $derived(
 		direction === 'end'
-			? 'Press → or tap the right side to continue'
-			: 'Press ← or tap the left side to go back'
+			? isRtl
+				? 'Press ← or tap the left side to continue'
+				: 'Press → or tap the right side to continue'
+			: isRtl
+				? 'Press → or tap the right side to go back'
+				: 'Press ← or tap the left side to go back'
 	);
 	const emptyMessage = $derived(
 		direction === 'end' ? "You're all caught up" : 'This is the first chapter'
