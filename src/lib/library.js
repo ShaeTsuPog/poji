@@ -467,7 +467,7 @@ export async function saveLayoutMode(mode) {
 }
 
 /**
- * @param {import('./library.js').StoredProgress} progress
+ * @param {StoredProgress} progress
  */
 export async function saveProgress(progress) {
 	const db = await openDb();
