@@ -3,6 +3,8 @@
 	import {
 		ArrowLeft,
 		ArrowRight,
+		Book,
+		BookOpen,
 		Check,
 		Database,
 		FolderOpen,
@@ -12,18 +14,20 @@
 	import BiGpuCard from '~icons/bi/gpu-card';
 	import SolarCpuBold from '~icons/solar/cpu-bold';
 	import TablerWorld from '~icons/tabler/world';
-	import { READING_DIRECTIONS, SCALE_ALGORITHMS, STORAGE_MODES } from '../lib/library.js';
+	import { LAYOUT_MODES, READING_DIRECTIONS, SCALE_ALGORITHMS, STORAGE_MODES } from '../lib/library.js';
 	import { closeModal } from '../lib/modal-animation.js';
 
 	let {
 		storageMode = STORAGE_MODES.FILE_SYSTEM,
 		readingDirection = READING_DIRECTIONS.LEFT_TO_RIGHT,
+		layoutMode = LAYOUT_MODES.SINGLE,
 		scaleAlgorithm = SCALE_ALGORITHMS.BROWSER,
 		scalingCapabilities = { mitchell: false, lanczos: false, browser: true },
 		scalingCapabilitiesReady = false,
 		fileSystemStorageSupported = false,
 		onstoragemodechange,
 		onreadingdirectionchange,
+		onlayoutmodechange,
 		onscalealgorithmchange,
 		onclose
 	} = $props();
@@ -47,6 +51,12 @@
 	async function setReadingDirection(direction) {
 		if (direction === readingDirection) return;
 		await onreadingdirectionchange?.(direction);
+	}
+
+	/** @param {'single' | 'double'} mode */
+	async function setLayoutMode(mode) {
+		if (mode === layoutMode) return;
+		await onlayoutmodechange?.(mode);
 	}
 
 	/** @param {'mitchell-linear-light' | 'lanczos' | 'browser'} algorithm */
@@ -156,6 +166,30 @@
 				>
 					<ArrowLeft size={18} aria-hidden="true" />
 					<span>Right to left</span>
+					<Check size={16} class="check-icon" aria-hidden="true" />
+				</button>
+			</div>
+
+			<div class="setting-label">Page layout</div>
+			<div class="mode-list">
+				<button
+					type="button"
+					class={['mode-btn', { active: layoutMode === LAYOUT_MODES.SINGLE }]}
+					aria-pressed={layoutMode === LAYOUT_MODES.SINGLE}
+					onclick={() => setLayoutMode(LAYOUT_MODES.SINGLE)}
+				>
+					<Book size={18} aria-hidden="true" />
+					<span>Single page</span>
+					<Check size={16} class="check-icon" aria-hidden="true" />
+				</button>
+				<button
+					type="button"
+					class={['mode-btn', { active: layoutMode === LAYOUT_MODES.DOUBLE }]}
+					aria-pressed={layoutMode === LAYOUT_MODES.DOUBLE}
+					onclick={() => setLayoutMode(LAYOUT_MODES.DOUBLE)}
+				>
+					<BookOpen size={18} aria-hidden="true" />
+					<span>Double page</span>
 					<Check size={16} class="check-icon" aria-hidden="true" />
 				</button>
 			</div>
