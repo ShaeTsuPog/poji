@@ -8,6 +8,7 @@ const SERIES_ORDER_KEY = 'seriesOrder';
 const STORAGE_MODE_KEY = 'storageMode';
 const READING_DIRECTION_KEY = 'readingDirection';
 const SCALE_ALGORITHM_KEY = 'scaleAlgorithm';
+const LAYOUT_MODE_KEY = 'layoutMode';
 const DB_VERSION = 5;
 /** @type {Promise<IDBDatabase> | null} */
 let dbPromise = null;
@@ -26,6 +27,11 @@ export const SCALE_ALGORITHMS = {
 	MITCHELL: 'mitchell-linear-light',
 	LANCZOS: 'lanczos',
 	BROWSER: 'browser'
+};
+
+export const LAYOUT_MODES = {
+	SINGLE: 'single',
+	DOUBLE: 'double'
 };
 
 /**
@@ -419,6 +425,42 @@ export async function saveScaleAlgorithm(algorithm) {
 	return new Promise((resolve, reject) => {
 		const tx = db.transaction(SETTINGS_STORE, 'readwrite');
 		tx.objectStore(SETTINGS_STORE).put({ id: SCALE_ALGORITHM_KEY, value });
+		tx.oncomplete = () => resolve();
+		tx.onerror = () => reject(tx.error);
+	});
+}
+
+/** @returns {'single' | 'double'} */
+export function defaultLayoutMode() {
+	return LAYOUT_MODES.SINGLE;
+}
+
+/** @returns {Promise<'single' | 'double'>} */
+export async function getLayoutMode() {
+	const db = await openDb();
+	return new Promise((resolve, reject) => {
+		const tx = db.transaction(SETTINGS_STORE, 'readonly');
+		const request = tx.objectStore(SETTINGS_STORE).get(LAYOUT_MODE_KEY);
+		request.onsuccess = () => {
+			const result = /** @type {{ value?: 'single' | 'double' } | undefined} */ (request.result);
+			if (result?.value === LAYOUT_MODES.DOUBLE) {
+				resolve(LAYOUT_MODES.DOUBLE);
+				return;
+			}
+			resolve(defaultLayoutMode());
+		};
+		request.onerror = () => reject(request.error);
+	});
+}
+
+/** @param {'single' | 'double'} mode */
+export async function saveLayoutMode(mode) {
+	const nextMode =
+		mode === LAYOUT_MODES.DOUBLE ? LAYOUT_MODES.DOUBLE : LAYOUT_MODES.SINGLE;
+	const db = await openDb();
+	return new Promise((resolve, reject) => {
+		const tx = db.transaction(SETTINGS_STORE, 'readwrite');
+		tx.objectStore(SETTINGS_STORE).put({ id: LAYOUT_MODE_KEY, value: nextMode });
 		tx.oncomplete = () => resolve();
 		tx.onerror = () => reject(tx.error);
 	});

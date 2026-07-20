@@ -3,7 +3,7 @@
 	import { innerWidth, innerHeight } from 'svelte/reactivity/window';
 	import ChapterTransition from './ChapterTransition.svelte';
 	import ScalingFallbackToast from './ScalingFallbackToast.svelte';
-	import { READING_DIRECTIONS, SCALE_ALGORITHMS } from '../lib/library.js';
+	import { LAYOUT_MODES, READING_DIRECTIONS, SCALE_ALGORITHMS } from '../lib/library.js';
 	import { getMitchellResizer } from '../lib/mitchell-resizer.js';
 	import { pica } from '../lib/scaling.js';
 
@@ -13,6 +13,7 @@
 		nextChapter,
 		prevChapter,
 		readingDirection = READING_DIRECTIONS.LEFT_TO_RIGHT,
+		layoutMode = LAYOUT_MODES.SINGLE,
 		scaleAlgorithm = SCALE_ALGORITHMS.BROWSER,
 		onclose,
 		onChapterComplete,
@@ -32,6 +33,20 @@
 	let scalingFallbackTimer;
 
 	let pageIndex = $state(0);
+
+	let isRtl = $derived(readingDirection === READING_DIRECTIONS.RIGHT_TO_LEFT);
+
+	let displayPageIndex = $derived.by(() => {
+		if (layoutMode !== 'double') return pageIndex;
+		if (pageIndex === 0) return 0;
+		return Math.floor((pageIndex + 1) / 2);
+	});
+
+	let displayTotalPages = $derived.by(() => {
+		if (layoutMode !== 'double') return book.pages.length;
+		return 1 + Math.ceil((book.pages.length - 1) / 2);
+	});
+
 	let uiVisible = $state(false);
 	let cursorHidden = $state(false);
 	let chapterCompleted = $state(false);
@@ -72,7 +87,10 @@
 	let chapterTransition = $state(null);
 
 	function maybeCompleteChapter(index) {
-		if (index === book.pages.length - 1 && !chapterCompleted) {
+		const lastIndex = layoutMode === 'double' && index > 0
+			? Math.min(index + 1, book.pages.length - 1)
+			: index;
+		if (lastIndex === book.pages.length - 1 && !chapterCompleted) {
 			chapterCompleted = true;
 			onChapterComplete?.();
 		}
@@ -242,29 +260,49 @@
 	}
 
 	function pruneResizeCache(currentIndex) {
+		const keepAhead = 7;
 		for (const key of resizeCache.keys()) {
 			const cachedPageIndex = Number(key.split(':')[0]);
-			if (Math.abs(cachedPageIndex - currentIndex) > 2) resizeCache.delete(key);
+			if (Math.abs(cachedPageIndex - currentIndex) > keepAhead) resizeCache.delete(key);
+		}
+	}
+
+	function pruneBitmaps(currentIndex) {
+		const keepAhead = 7;
+		for (const [index, promise] of bitmaps) {
+			if (Math.abs(index - currentIndex) <= keepAhead) continue;
+			promise.then((bitmap) => bitmap.close()).catch(() => {});
+			bitmaps.delete(index);
 		}
 	}
 
 	function prefetchNeighbors(index, maxWidth, maxHeight, algorithm) {
-		for (const neighbor of [index - 1, index + 1]) {
-			if (neighbor < 0 || neighbor >= book.pages.length) continue;
-			getResizedPage(neighbor, maxWidth, maxHeight, algorithm).catch((err) =>
-				console.error('Failed to prefetch page', neighbor, err)
-			);
+		const isDouble = layoutMode === 'double' && index > 0;
+		const ahead = 5;
+		const behind = isDouble ? 2 : 3;
+		for (let i = 1; i <= ahead; i++) {
+			const forward = index + i;
+			if (forward < book.pages.length) {
+				getResizedPage(forward, maxWidth, maxHeight, algorithm).catch((err) =>
+					console.error('Failed to prefetch page', forward, err)
+				);
+			}
+		}
+		for (let i = 1; i <= behind; i++) {
+			const backward = index - i;
+			if (backward >= 0) {
+				getResizedPage(backward, maxWidth, maxHeight, algorithm).catch((err) =>
+					console.error('Failed to prefetch page', backward, err)
+				);
+			}
 		}
 		pruneResizeCache(index);
+		pruneBitmaps(index);
 	}
 
 	let renderToken = 0;
 	let renderQueue = Promise.resolve();
 
-	/**
-	 * Attachment that re-renders the canvas whenever the page or the
-	 * viewport size changes, and closes decoded bitmaps on teardown.
-	 */
 	function renderPage(canvas) {
 		const index = pageIndex;
 		const maxWidth = innerWidth.current;
@@ -277,13 +315,43 @@
 		renderQueue = renderQueue
 			.then(async () => {
 				if (token !== renderToken) return;
-				const resized = await getResizedPage(index, maxWidth, maxHeight, algorithm);
-				if (token !== renderToken) return;
-				blitToCanvas(canvas, resized);
-				prefetchNeighbors(index, maxWidth, maxHeight, algorithm);
+
+				if (layoutMode === 'double' && index > 0) {
+					const halfWidth = Math.floor(maxWidth / 2);
+					const rightIdx = index + 1;
+					const [leftResized, rightResized] = await Promise.all([
+						getResizedPage(index, halfWidth, maxHeight, algorithm),
+						rightIdx < book.pages.length
+							? getResizedPage(rightIdx, halfWidth, maxHeight, algorithm)
+							: null
+					]);
+					if (token !== renderToken) return;
+
+					const first = isRtl ? rightResized : leftResized;
+					const second = isRtl ? leftResized : rightResized;
+					const firstW = first?.width ?? 0;
+					const secondW = second?.width ?? 0;
+
+					canvas.width = firstW + secondW;
+					canvas.height = Math.max(first?.height ?? 0, second?.height ?? 0);
+					canvas.style.width = `${(first?.cssWidth ?? 0) + (second?.cssWidth ?? 0)}px`;
+					canvas.style.height = `${Math.max(first?.cssHeight ?? 0, second?.cssHeight ?? 0)}px`;
+
+					const ctx = get2dContext(canvas);
+					ctx.clearRect(0, 0, canvas.width, canvas.height);
+					if (first) ctx.drawImage(first.canvas, 0, 0);
+					if (second) ctx.drawImage(second.canvas, firstW, 0);
+				} else {
+					const resized = await getResizedPage(index, maxWidth, maxHeight, algorithm);
+					if (token !== renderToken) return;
+					blitToCanvas(canvas, resized);
+				}
+
+				const prefetchW = layoutMode === 'double' && index > 0 ? Math.floor(maxWidth / 2) : maxWidth;
+				prefetchNeighbors(index, prefetchW, maxHeight, algorithm);
 			})
 			.catch((err) => console.error('Failed to render page', err));
-	}
+		}
 
 	$effect(() => {
 		book.volumeId;
@@ -327,12 +395,18 @@
 			if (nextChapter) onOpenNext?.(nextChapter);
 			return;
 		}
-		if (pageIndex >= book.pages.length - 1) {
+
+		const step = layoutMode === 'double' && pageIndex > 0 ? 2 : 1;
+		const lastPageInView = layoutMode === 'double' && pageIndex > 0
+			? Math.min(pageIndex + 1, book.pages.length - 1)
+			: pageIndex;
+
+		if (lastPageInView >= book.pages.length - 1) {
 			chapterTransition = 'end';
 			maybeCompleteChapter(pageIndex);
 			return;
 		}
-		goTo(pageIndex + 1);
+		goTo(Math.min(pageIndex + step, book.pages.length - 1));
 	}
 
 	function prevPage() {
@@ -348,15 +422,12 @@
 			chapterTransition = 'start';
 			return;
 		}
-		goTo(pageIndex - 1);
-	}
-
-	function isRightToLeft() {
-		return readingDirection === READING_DIRECTIONS.RIGHT_TO_LEFT;
+		const step = layoutMode === 'double' && pageIndex > 1 ? 2 : 1;
+		goTo(Math.max(0, pageIndex - step));
 	}
 
 	function turnFromLeftSide() {
-		if (isRightToLeft()) {
+		if (isRtl) {
 			nextPage();
 			return;
 		}
@@ -364,7 +435,7 @@
 	}
 
 	function turnFromRightSide() {
-		if (isRightToLeft()) {
+		if (isRtl) {
 			prevPage();
 			return;
 		}
@@ -372,14 +443,14 @@
 	}
 
 	function leftTapLabel() {
-		if (isRightToLeft()) {
+		if (isRtl) {
 			return chapterTransition === 'end' && nextChapter ? 'Continue to next chapter' : 'Next page';
 		}
 		return chapterTransition === 'start' && prevChapter ? 'Go to previous chapter' : 'Previous page';
 	}
 
 	function rightTapLabel() {
-		if (isRightToLeft()) {
+		if (isRtl) {
 			return chapterTransition === 'start' && prevChapter ? 'Go to previous chapter' : 'Previous page';
 		}
 		return chapterTransition === 'end' && nextChapter ? 'Continue to next chapter' : 'Next page';
@@ -387,7 +458,13 @@
 
 	/** @param {Event & { currentTarget: HTMLInputElement }} event */
 	function handleScrub(event) {
-		goTo(Number(event.currentTarget.value));
+		const displayIndex = Number(event.currentTarget.value);
+		if (layoutMode === 'double') {
+			const newPageIndex = displayIndex === 0 ? 0 : displayIndex * 2 - 1;
+			goTo(Math.min(newPageIndex, book.pages.length - 1));
+		} else {
+			goTo(displayIndex);
+		}
 	}
 
 	function clampMenuPosition(x, y) {
@@ -546,6 +623,7 @@
 				currentChapter={chapterLabel}
 				adjacentChapter={chapterTransition === 'end' ? nextChapter : prevChapter}
 				direction={chapterTransition}
+				{isRtl}
 			/>
 		{:else}
 			<canvas {@attach renderPage}></canvas>
@@ -609,12 +687,12 @@
 					type="range"
 					class="scrubber"
 					min="0"
-					max={book.pages.length - 1}
-					value={pageIndex}
+					max={displayTotalPages - 1}
+					value={displayPageIndex}
 					oninput={handleScrub}
 					aria-label="Page"
 				/>
-				<span class="pages">{pageIndex + 1} / {book.pages.length}</span>
+				<span class="pages">{displayPageIndex + 1} / {displayTotalPages}</span>
 			{/if}
 		</footer>
 	{/if}

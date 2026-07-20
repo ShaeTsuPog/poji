@@ -8,8 +8,10 @@
 	import { loadChapter } from './lib/cbz.js';
 	import { importVolumeFiles } from './lib/import-volumes.js';
 	import {
+		defaultLayoutMode,
 		defaultReadingDirection,
 		defaultStorageMode,
+		getLayoutMode,
 		getReadingDirection,
 		getScaleAlgorithm,
 		getStorageMode,
@@ -18,7 +20,9 @@
 		countVolumes,
 		listVolumes,
 		getProgress,
+		LAYOUT_MODES,
 		SCALE_ALGORITHMS,
+		saveLayoutMode,
 		saveReadingDirection,
 		saveScaleAlgorithm,
 		saveStorageMode
@@ -50,6 +54,7 @@
 	let fileSystemStorageSupported = $state(isFileSystemStorageSupported());
 	let storageMode = $state(defaultStorageMode());
 	let readingDirection = $state(defaultReadingDirection());
+	let layoutMode = $state(defaultLayoutMode());
 	let scaleAlgorithm = $state(SCALE_ALGORITHMS.BROWSER);
 	let scalingCapabilities = $state.raw({ mitchell: false, lanczos: false, browser: true });
 	let scalingCapabilitiesReady = $state(false);
@@ -91,6 +96,12 @@
 	}
 
 	refreshReadingDirection();
+
+	async function refreshLayoutMode() {
+		layoutMode = await getLayoutMode();
+	}
+
+	refreshLayoutMode();
 
 	async function initializeScaling() {
 		try {
@@ -157,6 +168,13 @@
 	async function handleReadingDirectionChange(direction) {
 		await saveReadingDirection(direction);
 		readingDirection = await getReadingDirection();
+	}
+
+	/** @param {'single' | 'double'} mode */
+	async function handleLayoutModeChange(mode) {
+		if (!Object.values(LAYOUT_MODES).includes(mode)) return;
+		await saveLayoutMode(mode);
+		layoutMode = mode;
 	}
 
 	/** @param {'mitchell-linear-light' | 'lanczos' | 'browser'} algorithm */
@@ -293,6 +311,7 @@
 			onOpenNext={(next) => handleOpen(next)}
 			onOpenPrev={(prev) => handleOpen({ ...prev, startAtEnd: true })}
 			{readingDirection}
+			{layoutMode}
 			{scaleAlgorithm}
 		/>
 	{:else}
@@ -329,12 +348,14 @@
 		<SettingsModal
 			{storageMode}
 			{readingDirection}
+			{layoutMode}
 			{scaleAlgorithm}
 			{scalingCapabilities}
 			{scalingCapabilitiesReady}
 			{fileSystemStorageSupported}
 			onstoragemodechange={handleStorageModeChange}
 			onreadingdirectionchange={handleReadingDirectionChange}
+			onlayoutmodechange={handleLayoutModeChange}
 			onscalealgorithmchange={handleScaleAlgorithmChange}
 			onclose={closeSettings}
 		/>
