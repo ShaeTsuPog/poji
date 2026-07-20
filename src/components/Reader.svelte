@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { innerWidth, innerHeight } from 'svelte/reactivity/window';
 	import ChapterTransition from './ChapterTransition.svelte';
 	import ScalingFallbackToast from './ScalingFallbackToast.svelte';
@@ -33,6 +33,14 @@
 	let scalingFallbackTimer;
 
 	let pageIndex = $state(0);
+
+	function normalizePageIndex(index, mode = layoutMode) {
+		const clamped = Math.max(0, Math.min(book.pages.length - 1, index));
+		if (mode === LAYOUT_MODES.DOUBLE && clamped > 0 && clamped % 2 === 0) {
+			return clamped - 1;
+		}
+		return clamped;
+	}
 
 	let isRtl = $derived(readingDirection === READING_DIRECTIONS.RIGHT_TO_LEFT);
 
@@ -356,7 +364,7 @@
 	$effect(() => {
 		book.volumeId;
 		book.chapterId;
-		pageIndex = book.startPageIndex ?? 0;
+		pageIndex = normalizePageIndex(book.startPageIndex ?? 0, untrack(() => layoutMode));
 		chapterTransition = null;
 		chapterCompleted = false;
 		for (const promise of bitmaps.values()) {
@@ -365,6 +373,18 @@
 		bitmaps.clear();
 		resizeCache.clear();
 		resizePromises.clear();
+	});
+
+	$effect(() => {
+		const mode = layoutMode;
+		const currentIndex = untrack(() => pageIndex);
+		const normalizedIndex = normalizePageIndex(currentIndex, mode);
+		if (normalizedIndex === currentIndex) return;
+
+		pageIndex = normalizedIndex;
+		closeImageMenu();
+		onPageChange?.(normalizedIndex);
+		maybeCompleteChapter(normalizedIndex);
 	});
 
 	$effect(() => {
@@ -378,7 +398,7 @@
 	});
 
 	function goTo(index) {
-		const next = Math.max(0, Math.min(book.pages.length - 1, index));
+		const next = normalizePageIndex(index);
 		pageIndex = next;
 		chapterTransition = null;
 		closeImageMenu();
