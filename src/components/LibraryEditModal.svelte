@@ -3,7 +3,7 @@
 	import { GripVertical, Trash2, Upload } from 'lucide-svelte';
 	import { closeModal } from '../lib/modal-animation.js';
 
-	/** @typedef {{ mangaName: string, volumeCount: number }} SeriesEntry */
+	/** @typedef {{ mangaName: string, volumeCount: number, browserVolumeCount: number, browserBytes: number, fileSystemVolumeCount: number }} SeriesEntry */
 
 	/** @type {{ series: SeriesEntry[], importing?: boolean, importError?: string | null, onimportbrowse?: () => void, onsave: (order: string[]) => void | Promise<void>, onclose: () => void }} */
 	let { series, importing = false, importError = null, onimportbrowse, onsave, onclose } = $props();
@@ -16,6 +16,16 @@
 	let saving = $state(false);
 	let error = $state(null);
 	let locallyRemoved = $state(new Set());
+	let storageStats = $derived.by(() =>
+		items.reduce(
+			(stats, entry) => ({
+				browserVolumeCount: stats.browserVolumeCount + entry.browserVolumeCount,
+				browserBytes: stats.browserBytes + entry.browserBytes,
+				fileSystemVolumeCount: stats.fileSystemVolumeCount + entry.fileSystemVolumeCount
+			}),
+			{ browserVolumeCount: 0, browserBytes: 0, fileSystemVolumeCount: 0 }
+		)
+	);
 
 	let dialog = $state.raw(null);
 
@@ -104,6 +114,22 @@
 		items = items.filter((entry) => entry.mangaName !== mangaName);
 	}
 
+	/** @param {number} bytes */
+	function formatStorageSize(bytes) {
+		if (bytes < 1024) return `${bytes} B`;
+		const units = ['KB', 'MB', 'GB', 'TB'];
+		let value = bytes;
+		let unitIndex = -1;
+		do {
+			value /= 1024;
+			unitIndex += 1;
+		} while (value >= 1024 && unitIndex < units.length - 1);
+
+		return `${new Intl.NumberFormat(undefined, {
+			maximumFractionDigits: value < 10 ? 2 : value < 100 ? 1 : 0
+		}).format(value)} ${units[unitIndex]}`;
+	}
+
 	async function save() {
 		saving = true;
 		error = null;
@@ -173,6 +199,20 @@
 		</div>
 
 		<div class="section-separator" aria-hidden="true"></div>
+
+		{#if storageStats.browserVolumeCount > 0 || storageStats.fileSystemVolumeCount > 0}
+			<p class="storage-stats">
+				{#if storageStats.browserVolumeCount > 0}
+					<strong>In-browser:</strong> {storageStats.browserVolumeCount} vol. ({formatStorageSize(storageStats.browserBytes)})
+				{/if}
+				{#if storageStats.browserVolumeCount > 0 && storageStats.fileSystemVolumeCount > 0}
+					<span aria-hidden="true"> · </span>
+				{/if}
+				{#if storageStats.fileSystemVolumeCount > 0}
+					<strong>File system:</strong> {storageStats.fileSystemVolumeCount} vol.
+				{/if}
+			</p>
+		{/if}
 
 		<p class="hint">Drag to reorder. Delete removes all volumes for a series.</p>
 
@@ -299,6 +339,18 @@
 		margin: 0;
 		font-size: 0.85rem;
 		color: #9a9aa3;
+	}
+
+	.storage-stats {
+		margin: 0;
+		font-size: 0.8rem;
+		font-variant-numeric: tabular-nums;
+		color: #b7b7bf;
+	}
+
+	.storage-stats strong {
+		font-weight: 600;
+		color: #d8d8de;
 	}
 
 	.import-card {

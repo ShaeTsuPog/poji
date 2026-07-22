@@ -1068,10 +1068,19 @@
 
 	{#if libraryEditOpen}
 		<LibraryEditModal
-			series={series.map((entry) => ({
-				mangaName: entry.mangaName,
-				volumeCount: entry.volumes.length
-			}))}
+			series={series.map((entry) => {
+				const browserVolumes = entry.volumes.filter(usesInBrowserStorage);
+				return {
+					mangaName: entry.mangaName,
+					volumeCount: entry.volumes.length,
+					browserVolumeCount: browserVolumes.length,
+					browserBytes: browserVolumes.reduce(
+						(total, volume) => total + (volume.blob?.size ?? 0),
+						0
+					),
+					fileSystemVolumeCount: entry.volumes.length - browserVolumes.length
+				};
+			})}
 			{importing}
 			{importError}
 			onimportbrowse={handleImportBrowse}
