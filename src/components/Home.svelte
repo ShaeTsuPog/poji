@@ -504,6 +504,40 @@
 		chapterContextMenu = null;
 	}
 
+	/** @param {number} bytes */
+	function formatStorageSize(bytes) {
+		if (bytes < 1024) return `${bytes} B`;
+		const units = ['KB', 'MB', 'GB', 'TB'];
+		let value = bytes;
+		let unitIndex = -1;
+		do {
+			value /= 1024;
+			unitIndex += 1;
+		} while (value >= 1024 && unitIndex < units.length - 1);
+		return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: value < 10 ? 2 : value < 100 ? 1 : 0 }).format(value)} ${units[unitIndex]}`;
+	}
+
+	/** @param {import('../lib/library.js').StoredVolume} volume */
+	function usesInBrowserStorage(volume) {
+		return volume.storageMode !== STORAGE_MODES.FILE_SYSTEM;
+	}
+
+	/** @param {typeof flatRows[0]} row */
+	function storageSummary(row) {
+		if (row.type === 'volume') {
+			return usesInBrowserStorage(row.volume)
+				? `In-browser · ${formatStorageSize(row.volume.blob?.size ?? 0)}`
+				: 'File system';
+		}
+
+		const browserVolumes = row.entry.volumes.filter(usesInBrowserStorage);
+		if (browserVolumes.length === 0) return 'File system';
+		const browserBytes = browserVolumes.reduce((total, volume) => total + (volume.blob?.size ?? 0), 0);
+		return browserVolumes.length === row.entry.volumes.length
+			? `In-browser · ${formatStorageSize(browserBytes)}`
+			: `Mixed storage · ${formatStorageSize(browserBytes)} in-browser`;
+	}
+
 	/** @param {MouseEvent} event @param {typeof flatRows[0]} row */
 	function openLibraryContextMenu(event, row) {
 		if (row.type !== 'manga' && row.type !== 'volume') return;
@@ -515,6 +549,7 @@
 			y: Math.max(8, Math.min(event.clientY, window.innerHeight - 64)),
 			type: row.type,
 			mangaName: row.entry.mangaName,
+			storageSummary: storageSummary(row),
 			volumeId: row.type === 'volume' ? row.volume.id : null,
 			isOnlyVolume: row.type === 'volume' && row.entry.volumes.length === 1,
 			label: row.type === 'volume' ? volumeLabel(row.volume) : row.entry.mangaName
@@ -1084,6 +1119,8 @@
 			aria-label="Library actions"
 			tabindex="-1"
 		>
+			<div class="context-menu-info" role="presentation">{libraryContextMenu.storageSummary}</div>
+			<div class="context-menu-separator" role="separator"></div>
 			<button type="button" role="menuitem" class="danger" onclick={deleteContextMenuItem}>
 				<Trash2 size={14} strokeWidth={2} aria-hidden="true" />
 				<span>{libraryContextMenu.type === 'manga' ? 'Delete manga' : 'Delete volume'}</span>
@@ -1430,6 +1467,20 @@
 		line-height: 1.2;
 		white-space: nowrap;
 		cursor: pointer;
+	}
+
+	.context-menu-info {
+		padding: 0.42rem 0.625rem;
+		color: #85858e;
+		font-size: 0.7rem;
+		line-height: 1.2;
+		white-space: nowrap;
+	}
+
+	.context-menu-separator {
+		height: 1px;
+		margin: 0.2rem 0.375rem;
+		background: rgba(255, 255, 255, 0.1);
 	}
 
 	.context-menu button :global(svg) {
