@@ -186,9 +186,7 @@
 			try {
 				const resizer = await getMitchellResizer();
 				if (resizer) {
-					const gpuCanvas = document.createElement('canvas');
-					await resizer.render(bitmap, gpuCanvas, width, height);
-					drawBitmapToCanvas(gpuCanvas, canvas, width, height);
+					await resizer.render(bitmap, canvas, width, height);
 					logResize(index, 'WebGPU Mitchell', bitmap, width, height, startedAt);
 					return { canvas, width, height, cssWidth, cssHeight };
 				}

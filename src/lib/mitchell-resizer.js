@@ -1,13 +1,22 @@
 const TEXTURE_USAGE = {
+	COPY_SRC: 0x01,
 	COPY_DST: 0x02,
 	TEXTURE_BINDING: 0x04,
 	RENDER_ATTACHMENT: 0x10
 };
 
 const BUFFER_USAGE = {
+	MAP_READ: 0x01,
 	COPY_DST: 0x08,
 	UNIFORM: 0x40
 };
+
+const MAP_MODE = {
+	READ: 0x01
+};
+
+const OUTPUT_FORMAT = 'rgba8unorm';
+const COPY_BYTES_PER_ROW_ALIGNMENT = 256;
 
 const SHARED_SHADER = /* wgsl */ `
 struct Sizes { src: vec2f, dst: vec2f }
@@ -90,9 +99,8 @@ const VERTICAL_SHADER = SHARED_SHADER + /* wgsl */ `
 `;
 
 class MitchellResizer {
-	constructor(device, format, horizontalPipeline, verticalPipeline) {
+	constructor(device, horizontalPipeline, verticalPipeline) {
 		this.device = device;
-		this.format = format;
 		this.horizontalPipeline = horizontalPipeline;
 		this.verticalPipeline = verticalPipeline;
 		this.lost = false;
@@ -106,9 +114,8 @@ class MitchellResizer {
 
 		canvas.width = width;
 		canvas.height = height;
-		const context = canvas.getContext('webgpu');
-		if (!context) throw new Error('Browser cannot create a WebGPU canvas context');
-		context.configure({ device: this.device, format: this.format, alphaMode: 'opaque' });
+		const context = canvas.getContext('2d');
+		if (!context) throw new Error('Browser cannot create a 2D canvas context');
 
 		const sourceTexture = this.device.createTexture({
 			size: [source.width, source.height],
@@ -122,6 +129,19 @@ class MitchellResizer {
 			size: [width, source.height],
 			format: 'rgba16float',
 			usage: TEXTURE_USAGE.RENDER_ATTACHMENT | TEXTURE_USAGE.TEXTURE_BINDING
+		});
+		const output = this.device.createTexture({
+			size: [width, height],
+			format: OUTPUT_FORMAT,
+			usage: TEXTURE_USAGE.RENDER_ATTACHMENT | TEXTURE_USAGE.COPY_SRC
+		});
+		const unpaddedBytesPerRow = width * 4;
+		const bytesPerRow =
+			Math.ceil(unpaddedBytesPerRow / COPY_BYTES_PER_ROW_ALIGNMENT) *
+			COPY_BYTES_PER_ROW_ALIGNMENT;
+		const readback = this.device.createBuffer({
+			size: bytesPerRow * height,
+			usage: BUFFER_USAGE.COPY_DST | BUFFER_USAGE.MAP_READ
 		});
 		const horizontalUniform = this.device.createBuffer({
 			size: 16,
@@ -183,7 +203,7 @@ class MitchellResizer {
 			const verticalPass = encoder.beginRenderPass({
 				colorAttachments: [
 					{
-						view: context.getCurrentTexture().createView(),
+						view: output.createView(),
 						loadOp: 'clear',
 						storeOp: 'store',
 						clearValue: [0, 0, 0, 1]
@@ -194,12 +214,34 @@ class MitchellResizer {
 			verticalPass.setBindGroup(0, verticalBindGroup);
 			verticalPass.draw(3);
 			verticalPass.end();
+			encoder.copyTextureToBuffer(
+				{ texture: output },
+				{ buffer: readback, bytesPerRow, rowsPerImage: height },
+				[width, height]
+			);
 
 			this.device.queue.submit([encoder.finish()]);
-			await this.device.queue.onSubmittedWorkDone();
+			await readback.mapAsync(MAP_MODE.READ);
+
+			const mapped = new Uint8Array(readback.getMappedRange());
+			const pixels = new Uint8ClampedArray(unpaddedBytesPerRow * height);
+			for (let row = 0; row < height; row += 1) {
+				const sourceOffset = row * bytesPerRow;
+				const destinationOffset = row * unpaddedBytesPerRow;
+				pixels.set(
+					mapped.subarray(sourceOffset, sourceOffset + unpaddedBytesPerRow),
+					destinationOffset
+				);
+			}
+			readback.unmap();
+
+			context.putImageData(new ImageData(pixels, width, height), 0, 0);
 		} finally {
 			sourceTexture.destroy();
 			intermediate.destroy();
+			output.destroy();
+			if (readback.mapState === 'mapped') readback.unmap();
+			readback.destroy();
 			horizontalUniform.destroy();
 			verticalUniform.destroy();
 		}
@@ -223,7 +265,6 @@ async function createMitchellResizer() {
 		if (!adapter) return null;
 
 		const device = await adapter.requestDevice();
-		const format = gpu.getPreferredCanvasFormat();
 		const horizontalModule = device.createShaderModule({ code: HORIZONTAL_SHADER });
 		const verticalModule = device.createShaderModule({ code: VERTICAL_SHADER });
 		const horizontalPipeline = await device.createRenderPipelineAsync({
@@ -239,11 +280,11 @@ async function createMitchellResizer() {
 		const verticalPipeline = await device.createRenderPipelineAsync({
 			layout: 'auto',
 			vertex: { module: verticalModule, entryPoint: 'vs' },
-			fragment: { module: verticalModule, entryPoint: 'fs', targets: [{ format }] },
+			fragment: { module: verticalModule, entryPoint: 'fs', targets: [{ format: OUTPUT_FORMAT }] },
 			primitive: { topology: 'triangle-list' }
 		});
 
-		return new MitchellResizer(device, format, horizontalPipeline, verticalPipeline);
+		return new MitchellResizer(device, horizontalPipeline, verticalPipeline);
 	} catch (error) {
 		console.warn('Mitchell WebGPU initialization failed; using fallback resizer', error);
 		return null;
