@@ -1,5 +1,13 @@
 import { importCbz, loadVolumeCover } from './cbz.js';
-import { getSeries, listVolumes, saveSeriesCover, saveVolume, STORAGE_MODES } from './library.js';
+import {
+	getSeries,
+	getSeriesOrder,
+	listVolumes,
+	saveSeriesCover,
+	saveSeriesOrder,
+	saveVolume,
+	STORAGE_MODES
+} from './library.js';
 import { ensureLocalProgress } from './progress.js';
 
 /** @param {string} name */
@@ -87,6 +95,13 @@ export async function importVolumeFiles(items, callbacks) {
 	const failures = [];
 	/** @type {Set<string>} */
 	const importedManga = new Set();
+	const [volumesBeforeImport, savedSeriesOrder] = await Promise.all([
+		listVolumes(),
+		getSeriesOrder()
+	]);
+	const existingManga = new Set(
+		volumesBeforeImport.map((volume) => normalizeMangaName(volume.mangaName))
+	);
 
 	for (const [index, item] of cbzItems.entries()) {
 		const { file, fileHandle } = item;
@@ -111,6 +126,17 @@ export async function importVolumeFiles(items, callbacks) {
 	for (const mangaName of importedManga) {
 		await ensureLocalProgress(mangaName);
 	}
+
+	const newManga = [...importedManga].filter((mangaName) => !existingManga.has(mangaName));
+	if (newManga.length > 0) {
+		const orderedExistingManga = savedSeriesOrder.filter((mangaName) => existingManga.has(mangaName));
+		const orderedExistingSet = new Set(orderedExistingManga);
+		const unorderedExistingManga = [...existingManga]
+			.filter((mangaName) => !orderedExistingSet.has(mangaName))
+			.sort((a, b) => a.localeCompare(b));
+		await saveSeriesOrder([...orderedExistingManga, ...unorderedExistingManga, ...newManga]);
+	}
+
 	if (importedManga.size > 0) {
 		await onVolumeImported?.();
 	}
