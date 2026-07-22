@@ -104,3 +104,13 @@ dialog.modal[data-closing='true']::backdrop {
 		animation: none;
 	}
 }
+
+@media (hover: none), (pointer: coarse) {
+	html,
+	body,
+	body * {
+		-webkit-user-select: none;
+		user-select: none;
+		-webkit-touch-callout: none;
+	}
+}

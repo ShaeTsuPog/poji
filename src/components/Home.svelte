@@ -65,6 +65,11 @@
 	/** @type {{ x: number, y: number } | null} */
 	let chapterLongPressStart = null;
 	let suppressNextChapterClick = false;
+	/** @type {ReturnType<typeof setTimeout> | undefined} */
+	let libraryLongPressTimer;
+	/** @type {{ x: number, y: number } | null} */
+	let libraryLongPressStart = null;
+	let suppressNextLibraryClick = false;
 	let seriesOrder = $state([]);
 	let entranceAnimationsDone = $state(false);
 	let fileInput = $state.raw(null);
@@ -275,6 +280,7 @@
 
 	onDestroy(() => {
 		clearChapterLongPressTimer();
+		clearLibraryLongPressTimer();
 		for (const url of coverObjectUrls.values()) {
 			URL.revokeObjectURL(url);
 		}
@@ -564,6 +570,7 @@
 	async function deleteContextMenuItem() {
 		const selection = libraryContextMenu;
 		if (!selection) return;
+		suppressNextLibraryClick = false;
 		libraryContextMenu = null;
 
 		const description =
@@ -669,6 +676,12 @@
 	}
 
 	function handleMangaRowClick(event, mangaName) {
+		if (suppressNextLibraryClick) {
+			event.preventDefault();
+			event.stopPropagation();
+			suppressNextLibraryClick = false;
+			return;
+		}
 		if (event.target instanceof Element && event.target.closest('.manga-action-btn')) return;
 		toggleManga(mangaName);
 	}
@@ -679,6 +692,16 @@
 		if (next.has(volumeId)) next.delete(volumeId);
 		else next.add(volumeId);
 		expandedVolumes = next;
+	}
+
+	function handleVolumeRowClick(event, volumeId) {
+		if (suppressNextLibraryClick) {
+			event.preventDefault();
+			event.stopPropagation();
+			suppressNextLibraryClick = false;
+			return;
+		}
+		toggleVolume(volumeId);
 	}
 
 	let flatRows = $derived.by(() => {
@@ -749,6 +772,42 @@
 		chapterLongPressStart = null;
 	}
 
+	function clearLibraryLongPressTimer() {
+		clearTimeout(libraryLongPressTimer);
+		libraryLongPressTimer = undefined;
+		libraryLongPressStart = null;
+	}
+
+	/** @param {PointerEvent} event @param {typeof flatRows[0]} row */
+	function handleLibraryPointerDown(event, row) {
+		if (
+			row.type === 'chapter' ||
+			event.button !== 0 ||
+			event.pointerType === 'mouse' ||
+			!event.isPrimary ||
+			!(event.target instanceof Element && event.target.closest('.row-toggle'))
+		) {
+			return;
+		}
+
+		clearLibraryLongPressTimer();
+		libraryLongPressStart = { x: event.clientX, y: event.clientY };
+		libraryLongPressTimer = setTimeout(() => {
+			suppressNextLibraryClick = true;
+			openLibraryContextMenu(event, row);
+		}, LONG_PRESS_DELAY_MS);
+	}
+
+	/** @param {PointerEvent} event */
+	function handleLibraryPointerMove(event) {
+		if (event.pointerType === 'mouse' || !libraryLongPressStart) return;
+		const distance = Math.hypot(
+			event.clientX - libraryLongPressStart.x,
+			event.clientY - libraryLongPressStart.y
+		);
+		if (distance > 10) clearLibraryLongPressTimer();
+	}
+
 	/**
 	 * @param {PointerEvent} event
 	 * @param {string} mangaName
@@ -788,6 +847,7 @@
 
 	function handlePressUp() {
 		clearChapterLongPressTimer();
+		clearLibraryLongPressTimer();
 		heroPressed = false;
 		chapterPressedId = null;
 	}
@@ -922,6 +982,9 @@
 					]}
 					style={row.type === 'manga' ? `--manga-index: ${row.mangaIndex}` : undefined}
 					role="group"
+					onpointerdown={(event) => handleLibraryPointerDown(event, row)}
+					onpointermove={handleLibraryPointerMove}
+					onpointerleave={clearLibraryLongPressTimer}
 					oncontextmenu={(event) => openLibraryContextMenu(event, row)}
 				>
 					{#if row.type === 'manga'}
@@ -989,7 +1052,7 @@
 							type="button"
 							class="row-toggle"
 							aria-expanded={row.volumeOpen}
-							onclick={() => toggleVolume(row.volume.id)}
+							onclick={(event) => handleVolumeRowClick(event, row.volume.id)}
 						>
 							<svg
 								class={['chevron', { open: row.volumeOpen }]}
