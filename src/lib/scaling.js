@@ -28,6 +28,24 @@ async function supportsMitchell() {
 
 		const target = document.createElement('canvas');
 		await resizer.render(source, target, 1, 1);
+
+		// A completed WebGPU submission does not guarantee that the rendered
+		// canvas can be copied into Canvas2D. Safari may return a black image
+		// from this handoff without reporting a WebGPU error, so exercise the
+		// same path used by the reader and verify its output.
+		const readable = document.createElement('canvas');
+		readable.width = 1;
+		readable.height = 1;
+		const readableContext = readable.getContext('2d');
+		if (!readableContext) return false;
+		readableContext.drawImage(target, 0, 0);
+		const [red, green, blue, alpha] = readableContext.getImageData(0, 0, 1, 1).data;
+		if (red < 250 || green < 250 || blue < 250 || alpha < 250) {
+			throw new Error(
+				`WebGPU canvas readback returned an unexpected pixel: rgba(${red}, ${green}, ${blue}, ${alpha})`
+			);
+		}
+
 		return true;
 	} catch (error) {
 		console.warn('Mitchell + linear light scaling is unavailable', error);
